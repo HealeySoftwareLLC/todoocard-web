@@ -30,10 +30,17 @@ export interface GenerateProvider extends ProviderSpec {
   listModels?(keys: Record<string, string>): Promise<ModelInfo[]>;
 }
 
+/**
+ * Status for failures caused by a provider or the network. 424 (Failed Dependency) rather than
+ * 502/504: Cloudflare replaces origin 502 and 504 responses with its own error page, which would
+ * hide the JSON message from the UI.
+ */
+export const UPSTREAM_FAILURE_STATUS = 424;
+
 export class UpstreamError extends Error {
   constructor(
     message: string,
-    public status = 502,
+    public status = UPSTREAM_FAILURE_STATUS,
   ) {
     super(message);
     this.name = 'UpstreamError';
@@ -45,7 +52,7 @@ export function mapUpstreamStatus(status: number): number {
   if (status === 401 || status === 403) return 401;
   if (status === 400 || status === 404 || status === 422) return 400;
   if (status === 429) return 429;
-  return 502;
+  return UPSTREAM_FAILURE_STATUS;
 }
 
 /** Pull a human-readable message out of common JSON error envelopes. */

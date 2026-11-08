@@ -164,7 +164,8 @@ function errorResponse(c: { json: (b: unknown, s: number) => Response }, e: unkn
   const msg = (e as Error)?.message ?? String(e);
   const timeout = /aborted|timeout/i.test(msg);
   console.error('API error:', msg);
-  return c.json({ error: timeout ? `The provider did not answer in time (${msg}). Try again or use a faster quality/model.` : msg, code: timeout ? 'timeout' : 'error' }, timeout ? 504 : 502);
+  // 424 instead of 502/504: Cloudflare replaces origin 502/504 bodies with its own error page.
+  return c.json({ error: timeout ? `The provider did not answer in time (${msg}). Try again or use a faster quality/model.` : msg, code: timeout ? 'timeout' : 'error' }, 424);
 }
 
 if (webDir) {

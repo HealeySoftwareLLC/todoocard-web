@@ -74,7 +74,7 @@ async function assertPublicHost(url: URL): Promise<void> {
   try {
     addrs = await lookup(host, { all: true, verbatim: true });
   } catch {
-    throw new ProxyError('Host could not be resolved', 502);
+    throw new ProxyError('Host could not be resolved', 424);
   }
   if (addrs.length === 0 || !addrs.every((a) => isPublicAddress(a.address))) throw new ProxyError('Address not allowed');
 }
@@ -108,18 +108,18 @@ export async function fetchImage(rawUrl: string): Promise<ProxiedImage> {
       });
     } catch (e) {
       clearTimeout(timer);
-      throw new ProxyError(`Fetch failed: ${(e as Error).message}`, 502);
+      throw new ProxyError(`Fetch failed: ${(e as Error).message}`, 424);
     }
     if (res.status >= 300 && res.status < 400) {
       clearTimeout(timer);
       const loc = res.headers.get('location');
-      if (!loc) throw new ProxyError('Redirect without location', 502);
+      if (!loc) throw new ProxyError('Redirect without location', 424);
       url = new URL(loc, url);
       continue;
     }
     if (!res.ok) {
       clearTimeout(timer);
-      throw new ProxyError(`Upstream returned ${res.status}`, 502);
+      throw new ProxyError(`Upstream returned ${res.status}`, 424);
     }
     const ct = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
     const len = Number(res.headers.get('content-length') ?? 0);
@@ -132,7 +132,7 @@ export async function fetchImage(rawUrl: string): Promise<ProxiedImage> {
     const reader = res.body?.getReader();
     if (!reader) {
       clearTimeout(timer);
-      throw new ProxyError('Empty response', 502);
+      throw new ProxyError('Empty response', 424);
     }
     try {
       for (;;) {
@@ -159,7 +159,7 @@ export async function fetchImage(rawUrl: string): Promise<ProxiedImage> {
     if (!contentType) throw new ProxyError('URL did not return an image', 415);
     return { bytes, contentType, finalUrl: url.toString() };
   }
-  throw new ProxyError('Too many redirects', 502);
+  throw new ProxyError('Too many redirects', 424);
 }
 
 export function sniffImageType(b: Uint8Array): string | null {
