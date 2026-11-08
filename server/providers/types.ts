@@ -32,11 +32,36 @@ export class UpstreamError extends Error {
   }
 }
 
+/** Map an upstream HTTP status to the status we return: client-side problems stay 4xx, everything else is 502. */
+export function mapUpstreamStatus(status: number): number {
+  if (status === 401 || status === 403) return 401;
+  if (status === 400 || status === 404 || status === 422) return 400;
+  if (status === 429) return 429;
+  return 502;
+}
+
+/** Pull a human-readable message out of common JSON error envelopes. */
+export function upstreamMessage(text: string): string {
+  try {
+    const j = JSON.parse(text) as Record<string, unknown>;
+    const err = j.error as Record<string, unknown> | string | undefined;
+    if (typeof err === 'string') return err;
+    if (err && typeof err.message === 'string') return err.message;
+    if (typeof j.message === 'string') return j.message;
+    if (typeof j.detail === 'string') return j.detail;
+  } catch {
+    /* not JSON */
+  }
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 export async function upstreamJson<T>(url: string, init: RequestInit, what: string): Promise<T> {
-  const res = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(60000) });
+  const res = await fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(90000) });
   if (!res.ok) {
-    const text = (await res.text().catch(() => '')).slice(0, 300);
-    throw new UpstreamError(`${what} returned ${res.status}${text ? `: ${text}` : ''}`, res.status === 401 || res.status === 403 ? 401 : 502);
+    const text = (await res.text().catch(() => '')).slice(0, 2000);
+    const msg = upstreamMessage(text).slice(0, 300);
+    console.error(`upstream ${what} ${init.method ?? 'GET'} ${new URL(url).host} -> ${res.status}: ${msg}`);
+    throw new UpstreamError(`${what} returned ${res.status}${msg ? `: ${msg}` : ''}`, mapUpstreamStatus(res.status));
   }
   return (await res.json()) as T;
 }

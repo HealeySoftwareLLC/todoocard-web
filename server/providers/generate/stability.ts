@@ -1,5 +1,5 @@
 import type { GenerateProvider } from '../types.js';
-import { UpstreamError } from '../types.js';
+import { UpstreamError, mapUpstreamStatus, upstreamMessage } from '../types.js';
 
 export const stability: GenerateProvider = {
   descriptor: {
@@ -26,7 +26,11 @@ export const stability: GenerateProvider = {
       body: form,
       signal: AbortSignal.timeout(120000),
     });
-    if (!res.ok) throw new UpstreamError(`Stability returned ${res.status}: ${(await res.text().catch(() => '')).slice(0, 300)}`, res.status === 401 ? 401 : 502);
+    if (!res.ok) {
+      const msg = upstreamMessage((await res.text().catch(() => '')).slice(0, 2000)).slice(0, 300);
+      console.error(`upstream Stability POST ${endpoint} -> ${res.status}: ${msg}`);
+      throw new UpstreamError(`Stability returned ${res.status}: ${msg}`, mapUpstreamStatus(res.status));
+    }
     return { bytes: new Uint8Array(await res.arrayBuffer()), contentType: res.headers.get('content-type') ?? 'image/png', meta: { endpoint, aspect } };
   },
 };
