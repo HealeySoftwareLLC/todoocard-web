@@ -9,7 +9,7 @@ import { useClient } from './hooks/useClient';
 import { useSettings } from './hooks/useSettings';
 import { getConfig, type ApiError } from './lib/api';
 import { isWebBluetoothSupported } from './lib/ble';
-import { composeToPanel, defaultCompose, loadBitmap, prepareFromImageData, type ComposeOptions, type Prepared } from './lib/compose';
+import { composeToPanel, defaultCompose, defaultProcessing, loadBitmap, prepareFromImageData, type ComposeOptions, type Prepared, type ProcessingOptions } from './lib/compose';
 
 export function App() {
   const { settings, setSettings } = useSettings();
@@ -20,6 +20,7 @@ export function App() {
   const [bitmap, setBitmap] = useState<ImageBitmap | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [compose, setCompose] = useState<ComposeOptions>(defaultCompose);
+  const [processing, setProcessing] = useState<ProcessingOptions>(defaultProcessing);
   const [composed, setComposed] = useState<ImageData | null>(null);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -71,7 +72,7 @@ export function App() {
       try {
         const img = composeToPanel(bitmap, compose, workCanvas);
         setComposed(img);
-        setPrepared(prepareFromImageData(img));
+        setPrepared(prepareFromImageData(img, processing));
       } catch (e) {
         setSourceError((e as Error).message);
       } finally {
@@ -79,7 +80,7 @@ export function App() {
       }
     }, 120);
     return () => clearTimeout(t);
-  }, [bitmap, compose, workCanvas]);
+  }, [bitmap, compose, processing, workCanvas]);
 
   const onSource = useCallback((s: SourceImage) => {
     setSource(s);
@@ -128,7 +129,7 @@ export function App() {
         <section className="col col-image">
           <SourcePanel settings={settings} config={config} onSource={onSource} current={source} />
           {sourceError && <div className="banner error">{sourceError}</div>}
-          <Editor bitmap={bitmap} composed={composed} prepared={prepared} compose={compose} setCompose={setCompose} preparing={preparing} />
+          <Editor bitmap={bitmap} composed={composed} prepared={prepared} compose={compose} setCompose={setCompose} processing={processing} setProcessing={setProcessing} preparing={preparing} />
         </section>
         <aside className="col col-send">
           <SendPanel client={client} info={info} connected={connected} prepared={prepared} sourceName={source?.name} log={log} clearLog={clearLog} debug={settings.debugLog} />

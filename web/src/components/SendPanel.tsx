@@ -5,6 +5,11 @@ import type { DeviceInfo, LogEntry, TodooCardClient } from '../lib/ble';
 import type { Prepared } from '../lib/compose';
 import { runTransfer, type TransferProgress } from '../lib/transfer';
 
+/** Vendor refuses a transfer below this battery level (MIN_OPERATION_BATTERY_PERCENT). */
+const MIN_OPERATION_BATTERY = 5;
+/** Below this we warn but still allow the send. */
+const LOW_BATTERY_WARN = 20;
+
 interface Props {
   client: TodooCardClient;
   info: DeviceInfo | null;
@@ -30,6 +35,9 @@ export function SendPanel({ client, info, connected, prepared, sourceName, log, 
   const estBlocks = payload ? Math.ceil(payload.bytes.length / 240) : 0;
   const otaRecovery = info?.flags?.otaRecovery ?? false;
   const pairingOpen = info?.flags?.pairingWindowOpen ?? false;
+  const battery = info?.battery;
+  const batteryBlocked = battery !== undefined && battery < MIN_OPERATION_BATTERY;
+  const batteryLow = battery !== undefined && battery >= MIN_OPERATION_BATTERY && battery < LOW_BATTERY_WARN;
 
   const send = async () => {
     if (!payload || fw === undefined) return;
@@ -68,9 +76,11 @@ export function SendPanel({ client, info, connected, prepared, sourceName, log, 
       )}
       {otaRecovery && <div className="banner error">The card advertises OTA recovery mode. Image transfer is refused; repair the firmware with the vendor app first.</div>}
       {pairingOpen && <div className="banner warn">The pairing window is open. Wait for it to close (about a minute) before sending.</div>}
+      {batteryBlocked && <div className="banner error">Battery is {battery}%. Sending is blocked below {MIN_OPERATION_BATTERY}% — a transfer that stalls mid-refresh can leave a half-drawn image. Charge the card first.</div>}
+      {batteryLow && <div className="banner warn">Battery is {battery}%. You can send, but charging first is safer (a refresh takes 20-30 s).</div>}
 
       {!running && !confirming && (
-        <button className="btn primary big" disabled={!ready || otaRecovery || pairingOpen} onClick={() => setConfirming(true)}>
+        <button className="btn primary big" disabled={!ready || otaRecovery || pairingOpen || batteryBlocked} onClick={() => setConfirming(true)}>
           Send to card
         </button>
       )}

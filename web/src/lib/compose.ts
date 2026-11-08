@@ -3,9 +3,38 @@
  * pipeline. Uses createImageBitmap, which honours EXIF orientation in Chrome.
  */
 import { PANEL_HEIGHT, PANEL_WIDTH } from '@shared/protocol';
-import { buildT3Bitmaps, codesToRgba, colorUsage, type T3Bitmaps } from '@shared/image';
+import { buildT3Bitmaps, codesToRgba, colorUsage, PREVIEW_RGB, type DitherEngine, type T3Bitmaps } from '@shared/image';
+import {
+  defaultEpdOptions,
+  previewRgbForPalette,
+  type ColorMatching,
+  type DiffusionMatrix,
+  type PaletteName,
+  type PresetName,
+} from '@shared/epd';
 
 export type FitMode = 'cover' | 'contain';
+
+/** Input safety limits (mirrors the vendor skill's 100 MB / 50 MP guard). */
+export const MAX_INPUT_BYTES = 100 * 1024 * 1024;
+export const MAX_INPUT_PIXELS = 50_000_000;
+
+/** Image-optimisation (dithering) options, separate from geometry/adjustments. */
+export interface ProcessingOptions {
+  engine: 'enhanced' | 'classic';
+  preset: PresetName;
+  palette: PaletteName;
+  matrix: DiffusionMatrix;
+  matching: ColorMatching;
+}
+
+export const defaultProcessing: ProcessingOptions = {
+  engine: 'enhanced',
+  preset: 'balanced',
+  palette: 'spectra6-aitjcize',
+  matrix: 'floyd-steinberg',
+  matching: 'rgb',
+};
 
 export interface ComposeOptions {
   fit: FitMode;
@@ -28,15 +57,25 @@ export const defaultCompose: ComposeOptions = {
   panY: 0,
   brightness: 1,
   contrast: 1,
-  saturation: 1.15,
+  saturation: 1,
 };
 
 export async function loadBitmap(blob: Blob): Promise<ImageBitmap> {
+  if (blob.size > MAX_INPUT_BYTES) {
+    throw new Error(`Image is ${(blob.size / (1024 * 1024)).toFixed(0)} MB; the limit is ${MAX_INPUT_BYTES / (1024 * 1024)} MB. Resize or re-export it smaller first.`);
+  }
+  let bitmap: ImageBitmap;
   try {
-    return await createImageBitmap(blob, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+    bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' } as ImageBitmapOptions);
   } catch (e) {
     throw new Error(`Could not decode image (${blob.type || 'unknown type'}). HEIC/HEIF is not supported by Chrome; convert to JPEG or PNG first. ${(e as Error).message ?? ''}`.trim());
   }
+  if (bitmap.width * bitmap.height > MAX_INPUT_PIXELS) {
+    const mp = ((bitmap.width * bitmap.height) / 1_000_000).toFixed(0);
+    bitmap.close();
+    throw new Error(`Image is ${bitmap.width}×${bitmap.height} (${mp} MP); the limit is ${MAX_INPUT_PIXELS / 1_000_000} MP. Resize it smaller first.`);
+  }
+  return bitmap;
 }
 
 /** Draw the composed image at panel size and return RGBA pixels. */
@@ -82,9 +121,14 @@ export interface Prepared {
   usage: Record<string, number>;
 }
 
-export function prepareFromImageData(img: ImageData): Prepared {
-  const bitmaps = buildT3Bitmaps(img.data);
-  return { bitmaps, previewRgba: codesToRgba(bitmaps.uprightCodes), usage: colorUsage(bitmaps.uprightCodes) };
+export function prepareFromImageData(img: ImageData, processing: ProcessingOptions = defaultProcessing): Prepared {
+  const engine: DitherEngine =
+    processing.engine === 'classic'
+      ? { kind: 'classic' }
+      : { kind: 'enhanced', options: { ...defaultEpdOptions, palette: processing.palette, matrix: processing.matrix, matching: processing.matching, preset: processing.preset } };
+  const previewPalette = processing.engine === 'classic' ? PREVIEW_RGB : previewRgbForPalette(processing.palette);
+  const bitmaps = buildT3Bitmaps(img.data, engine);
+  return { bitmaps, previewRgba: codesToRgba(bitmaps.uprightCodes, previewPalette), usage: colorUsage(bitmaps.uprightCodes) };
 }
 
 export function drawRgbaToCanvas(canvas: HTMLCanvasElement, rgba: Uint8ClampedArray, width: number, height: number) {

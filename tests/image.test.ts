@@ -87,7 +87,9 @@ describe('parity with the vendor converter', () => {
     const png = PNG.sync.read(readFileSync(fixture('upright.png')));
     expect(png.width).toBe(PANEL_WIDTH);
     expect(png.height).toBe(PANEL_HEIGHT);
-    const bitmaps = buildT3Bitmaps(new Uint8ClampedArray(png.data.buffer, png.data.byteOffset, png.data.byteLength));
+    // The vendor Swift converter uses plain Floyd–Steinberg against pure primaries,
+    // which is the `classic` engine; the enhanced engine intentionally differs.
+    const bitmaps = buildT3Bitmaps(new Uint8ClampedArray(png.data.buffer, png.data.byteOffset, png.data.byteLength), { kind: 'classic' });
     const expectedBin = new Uint8Array(readFileSync(fixture('expected.bin')));
     const expectedCtrl = new Uint8Array(readFileSync(fixture('expected.controller.bin')));
     expect(bitmaps.calibrated.length).toBe(expectedBin.length);

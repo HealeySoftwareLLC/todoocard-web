@@ -4,6 +4,14 @@
  * Pure functions, usable in the browser and in Node tests.
  */
 import { CONTROLLER_BYTES, PANEL_HEIGHT, PANEL_PIXELS, PANEL_WIDTH } from './protocol.js';
+import { optimizeToCodes, defaultEpdOptions, type EpdOptions } from './epd.js';
+
+/**
+ * Selects the dithering engine. `enhanced` is the ported vendor pipeline
+ * (measured Spectra-6 palette, tone/DRC, choice of matrices); `classic` is the
+ * original Floyd–Steinberg-against-pure-primaries path kept for parity tests.
+ */
+export type DitherEngine = { kind: 'enhanced'; options: EpdOptions } | { kind: 'classic' };
 
 export interface NativeColor {
   name: string;
@@ -156,11 +164,17 @@ export interface T3Bitmaps {
 }
 
 /** Full pipeline from an upright 528x792 RGBA buffer to device bitmaps. */
-export function buildT3Bitmaps(rgba: Uint8ClampedArray | Uint8Array): T3Bitmaps {
+export function buildT3Bitmaps(
+  rgba: Uint8ClampedArray | Uint8Array,
+  engine: DitherEngine = { kind: 'enhanced', options: defaultEpdOptions },
+): T3Bitmaps {
   if (rgba.length !== PANEL_PIXELS * 4) {
     throw new Error(`Expected ${PANEL_WIDTH}x${PANEL_HEIGHT} RGBA (${PANEL_PIXELS * 4} bytes), got ${rgba.length}`);
   }
-  const uprightCodes = ditherToCodes(rgba, PANEL_WIDTH, PANEL_HEIGHT);
+  const uprightCodes =
+    engine.kind === 'classic'
+      ? ditherToCodes(rgba, PANEL_WIDTH, PANEL_HEIGHT)
+      : optimizeToCodes(rgba, PANEL_WIDTH, PANEL_HEIGHT, engine.options);
   const calibratedCodes = calibrateT3(uprightCodes);
   const calibrated = packCodes(calibratedCodes);
   const controller = packCodes(toControllerOrder(calibratedCodes));
