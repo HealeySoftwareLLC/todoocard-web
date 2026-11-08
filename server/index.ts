@@ -34,6 +34,24 @@ const APP_TOKEN = process.env.APP_ACCESS_TOKEN?.trim() || '';
 
 const app = new Hono();
 app.use(logger((s) => console.log(s)));
+/**
+ * Cache policy (Cloudflare and browsers honour these):
+ * - /assets/* are content-hashed by Vite: cache for a year, immutable.
+ * - the HTML shell must always be revalidated so a deploy is picked up at once.
+ * - other static files (favicon) for a day; API responses never.
+ */
+app.use('/*', async (c, next) => {
+  await next();
+  const p = c.req.path;
+  if (p.startsWith('/api/')) {
+    if (!c.res.headers.has('cache-control')) c.res.headers.set('cache-control', 'no-store');
+    return;
+  }
+  if (p.startsWith('/assets/')) c.res.headers.set('cache-control', 'public, max-age=31536000, immutable');
+  else if (p === '/' || p.endsWith('.html') || c.res.headers.get('content-type')?.includes('text/html')) c.res.headers.set('cache-control', 'no-cache');
+  else c.res.headers.set('cache-control', 'public, max-age=86400, must-revalidate');
+});
+
 app.use('/api/*', cors({ origin: (o) => o, allowHeaders: ['content-type', 'x-app-token'], exposeHeaders: ['x-generation-meta'] }));
 
 const limits = {
@@ -134,24 +152,6 @@ function errorResponse(c: { json: (b: unknown, s: number) => Response }, e: unkn
   console.error('API error:', msg);
   return c.json({ error: timeout ? `The provider did not answer in time (${msg}). Try again or use a faster quality/model.` : msg, code: timeout ? 'timeout' : 'error' }, timeout ? 504 : 502);
 }
-
-/**
- * Cache policy (Cloudflare and browsers honour these):
- * - /assets/* are content-hashed by Vite: cache for a year, immutable.
- * - the HTML shell must always be revalidated so a deploy is picked up at once.
- * - other static files (favicon) for a day; API responses never.
- */
-app.use('/*', async (c, next) => {
-  await next();
-  const p = c.req.path;
-  if (p.startsWith('/api/')) {
-    if (!c.res.headers.has('cache-control')) c.res.headers.set('cache-control', 'no-store');
-    return;
-  }
-  if (p.startsWith('/assets/')) c.res.headers.set('cache-control', 'public, max-age=31536000, immutable');
-  else if (p === '/' || p.endsWith('.html') || c.res.headers.get('content-type')?.includes('text/html')) c.res.headers.set('cache-control', 'no-cache');
-  else c.res.headers.set('cache-control', 'public, max-age=86400, must-revalidate');
-});
 
 if (webDir) {
   const root = webDir.startsWith('/') ? webDir : join(process.cwd(), webDir);
