@@ -118,6 +118,7 @@ export async function runTransfer(client: TodooCardClient, opts: TransferOptions
   client.addEventListener('disconnected', onDisconnect);
 
   try {
+    await client.readDiagnostics('before send').catch(() => null);
     ({ control, data } = await client.prepareTransferCharacteristics());
     const onNotify = (ev: Event) => {
       const v = (ev.target as BluetoothRemoteGATTCharacteristic).value;
@@ -333,12 +334,14 @@ export async function runTransfer(client: TodooCardClient, opts: TransferOptions
       /* ignore */
     }
     control.removeEventListener('characteristicvaluechanged', onNotify);
+    // The card usually drops the link to redraw; grab the post-send records if it is still there.
+    await client.readDiagnostics('after send').catch(() => null);
     return { ok: true, blocks: totalBlocks, bytes: payload.length, durationMs: Date.now() - started };
   } catch (e) {
     const err = e instanceof BleError ? e : new BleError((e as Error).message ?? String(e), 'unknown', e);
     log('error', `Transfer failed: ${err.message}`);
     if (opts.firmwareRaw >= FW.diagnostics && client.connected) {
-      const d = await client.readDiagnostics();
+      const d = await client.readDiagnostics('after failure');
       if (d) log('info', `Image-ACK diagnostics: session=${d.session} flags=0x${d.flags.toString(16)} generated=${d.generated} accepted=${d.accepted} rejected=${d.rejected} requestedBlock=${d.requestedBlock} previousStatus=0x${d.previousStatus.toString(16)} lastReceivedBlock=${d.lastReceivedBlock}`);
     }
     throw err;

@@ -128,3 +128,7 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .field em { color: var(--muted); font-style: normal; }
 .provider { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .chip.as-button { border: none; cursor: pointer; font: inherit; font-size: 0.8rem; }
+.snapshots { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.snapshot { background: var(--chip); border-radius: 6px; padding: 6px 8px; overflow-x: auto; }
+.hexbytes span { display: inline-block; margin-right: 0.35em; }
+.hexbytes span.changed { color: var(--accent); font-weight: 600; text-decoration: underline; }

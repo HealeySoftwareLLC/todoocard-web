@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { FW } from '@shared/protocol';
-import { BleError, type DeviceInfo, type TodooCardClient } from '../lib/ble';
+import { FW, STATUS, hex } from '@shared/protocol';
+import { BleError, type DeviceInfo, type DiagSnapshot, type TodooCardClient } from '../lib/ble';
 
 interface Props {
   client: TodooCardClient;
@@ -107,7 +107,10 @@ export function DevicePanel({ client, info, connected }: Props) {
             )}
             <tr>
               <th>Battery</th>
-              <td>{info.battery !== undefined ? `${info.battery}%` : '—'}</td>
+              <td>
+                {info.battery !== undefined ? `${info.battery}%` : '—'}
+                {info.batteryLive && connected && <span className="chip ok small" title="Updated by notifications from the card">live</span>}
+              </td>
             </tr>
             <tr>
               <th>Transfer</th>
@@ -136,6 +139,8 @@ export function DevicePanel({ client, info, connected }: Props) {
         </table>
       )}
 
+      {info && (info.snapshots?.length ?? 0) > 0 && <RawDiagnostics client={client} info={info} connected={connected} />}
+
       <details className="help" open={!!error && (error.code === 'notbonded' || error.code === 'auth')}>
         <summary>How pairing works</summary>
         <ol>
@@ -146,6 +151,123 @@ export function DevicePanel({ client, info, connected }: Props) {
         </ol>
         <p className="muted small">Pairing proof is a successful encrypted read of the Battery Level characteristic, the same check the vendor tooling uses.</p>
       </details>
+    </div>
+  );
+}
+
+
+function RawDiagnostics({ client, info, connected }: { client: TodooCardClient; info: DeviceInfo; connected: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const snaps = info.snapshots ?? [];
+  const latest = snaps[snaps.length - 1];
+  const d = latest?.diagnostics;
+  const flagBits = (f: number) =>
+    [f & 0x01 ? 'active' : '', f & 0x02 ? 'pending' : '', f & 0x04 ? 'block-received' : '', f & 0x08 ? 'last-accepted' : ''].filter(Boolean).join(', ') || 'none';
+  const statusName = (v: number) => (v === STATUS.transferEnd ? 'refresh done' : v === STATUS.success ? 'ok' : `0x${v.toString(16).padStart(2, '0')}`);
+
+  return (
+    <details className="help">
+      <summary>Raw diagnostics</summary>
+      <p className="muted small">
+        Two vendor records: the documented image-ACK record (…1003) and an undocumented 22-byte status record (…1002). Snapshots are taken at connect and before/after each
+        send; bytes that changed since the previous snapshot are highlighted so the status record can be decoded over time.
+      </p>
+      <div className="row gap">
+        <button
+          className="btn small"
+          disabled={!connected || busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await client.readDiagnostics('manual');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? 'Reading…' : 'Read now'}
+        </button>
+        <button
+          className="btn small"
+          onClick={() =>
+            navigator.clipboard?.writeText(
+              snaps.map((s) => `${new Date(s.t).toISOString()} ${s.label}\n  status=${s.status ? hex(s.status) : '-'}\n  imageAck=${s.imageAck ? hex(s.imageAck) : '-'}`).join('\n'),
+            )
+          }
+        >
+          Copy snapshots
+        </button>
+      </div>
+      {d && (
+        <table className="kv small">
+          <tbody>
+            <tr>
+              <th>Session</th>
+              <td>{d.session}</td>
+            </tr>
+            <tr>
+              <th>Flags</th>
+              <td>
+                0x{d.flags.toString(16).padStart(2, '0')} ({flagBits(d.flags)})
+              </td>
+            </tr>
+            <tr>
+              <th>Acks</th>
+              <td>
+                generated {d.generated}, attempts {d.attempts}, accepted {d.accepted}, rejected {d.rejected}
+              </td>
+            </tr>
+            <tr>
+              <th>Blocks</th>
+              <td>
+                requested {d.requestedBlock}, last received {d.lastReceivedBlock}
+              </td>
+            </tr>
+            <tr>
+              <th>Results</th>
+              <td>
+                previous {statusName(d.previousStatus)}, last notify {statusName(d.lastNotifyResult)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+      <div className="snapshots">
+        {snaps.map((s, i) => (
+          <SnapshotRow key={s.t} snap={s} prev={i > 0 ? snaps[i - 1] : undefined} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function HexBytes({ bytes, prev }: { bytes?: Uint8Array; prev?: Uint8Array }) {
+  if (!bytes) return <span className="muted">—</span>;
+  return (
+    <span className="hexbytes">
+      {Array.from(bytes).map((b, i) => (
+        <span key={i} className={prev && prev[i] !== b ? 'changed' : ''}>
+          {b.toString(16).padStart(2, '0')}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function SnapshotRow({ snap, prev }: { snap: DiagSnapshot; prev?: DiagSnapshot }) {
+  return (
+    <div className="snapshot mono small">
+      <div className="muted">
+        {new Date(snap.t).toLocaleTimeString()} · {snap.label}
+      </div>
+      <div>
+        <span className="muted">1002 </span>
+        <HexBytes bytes={snap.status} prev={prev?.status} />
+      </div>
+      <div>
+        <span className="muted">1003 </span>
+        <HexBytes bytes={snap.imageAck} prev={prev?.imageAck} />
+      </div>
     </div>
   );
 }

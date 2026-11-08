@@ -13,6 +13,7 @@ import {
   FW,
   UUIDS,
   describeAdvertisement,
+  hex as hexOf,
   parseFirmwareRevisionString,
   parseImageAckDiagnostics,
   parseManufacturerData,
@@ -43,7 +44,27 @@ export interface DeviceInfo {
   flags?: ReturnType<typeof describeAdvertisement>;
   rssi?: number;
   diagnostics?: ImageAckDiagnostics;
+  /** True once Battery Level notifications are flowing. */
+  batteryLive?: boolean;
+  /** Raw diagnostics snapshots, newest last (capped). */
+  snapshots?: DiagSnapshot[];
   services?: string[];
+}
+
+export interface DiagSnapshot {
+  t: number;
+  label: string;
+  /** D8B282F0-…1002 (undocumented status record) */
+  status?: Uint8Array;
+  /** D8B282F0-…1003 (image-ACK record) */
+  imageAck?: Uint8Array;
+  diagnostics?: ImageAckDiagnostics;
+}
+
+const MAX_SNAPSHOTS = 12;
+
+function bytesOf(v: DataView): Uint8Array {
+  return new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
 }
 
 export class BleError extends Error {
@@ -90,6 +111,7 @@ export class TodooCardClient extends EventTarget {
   data: BluetoothRemoteGATTCharacteristic | null = null;
   info: DeviceInfo | null = null;
   busy = false;
+  private batteryChar: BluetoothRemoteGATTCharacteristic | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private advertisementAbort: AbortController | null = null;
 
@@ -147,6 +169,11 @@ export class TodooCardClient extends EventTarget {
       this.log('warn', 'Disconnected');
       this.control = null;
       this.data = null;
+      this.batteryChar = null;
+      if (this.info) {
+        this.info.batteryLive = false;
+        this.emitInfo();
+      }
       this.dispatchEvent(new Event('disconnected'));
     });
     this.emitInfo();
@@ -216,6 +243,33 @@ export class TodooCardClient extends EventTarget {
     this.server = null;
     this.control = null;
     this.data = null;
+    this.batteryChar = null;
+  }
+
+  /** Subscribe to Battery Level notifications so the panel shows live values. */
+  async startBatteryNotifications(): Promise<void> {
+    if (!this.server?.connected || this.batteryChar) return;
+    try {
+      const svc = await this.server.getPrimaryService(UUIDS.batteryService);
+      const ch = await svc.getCharacteristic(UUIDS.batteryLevel);
+      if (!ch.properties.notify) return;
+      ch.addEventListener('characteristicvaluechanged', (ev) => {
+        const v = (ev.target as BluetoothRemoteGATTCharacteristic).value;
+        if (!v || !this.info) return;
+        this.info.battery = v.getUint8(0);
+        this.info.batteryLive = true;
+        this.emitInfo();
+      });
+      await this.op(() => ch.startNotifications());
+      this.batteryChar = ch;
+      if (this.info) {
+        this.info.batteryLive = true;
+        this.emitInfo();
+      }
+      this.log('debug', 'Battery notifications enabled');
+    } catch (e) {
+      this.log('debug', `Battery notifications unavailable: ${(e as Error).message}`);
+    }
   }
 
   private async readString(service: BluetoothRemoteGATTService, uuid: BluetoothCharacteristicUUID): Promise<string | undefined> {
@@ -295,22 +349,41 @@ export class TodooCardClient extends EventTarget {
     return info;
   }
 
-  async readDiagnostics(): Promise<ImageAckDiagnostics | null> {
+  /**
+   * Read both vendor diagnostics records and keep a labelled snapshot (for example
+   * "connect", "before send", "after send") so the undocumented status record can be
+   * decoded by comparing bytes over time.
+   */
+  async readDiagnostics(label = 'manual'): Promise<ImageAckDiagnostics | null> {
     if (!this.server?.connected) return null;
+    const snap: DiagSnapshot = { t: Date.now(), label };
     try {
       const svc = await this.server.getPrimaryService(UUIDS.diagnosticsService);
-      const ch = await svc.getCharacteristic(UUIDS.diagnosticsImageAck);
-      const v = await this.op(() => ch.readValue());
-      const diag = parseImageAckDiagnostics(new Uint8Array(v.buffer, v.byteOffset, v.byteLength));
-      if (diag && this.info) {
-        this.info.diagnostics = diag;
-        this.emitInfo();
+      try {
+        const ack = await svc.getCharacteristic(UUIDS.diagnosticsImageAck);
+        snap.imageAck = bytesOf(await this.op(() => ack.readValue()));
+        snap.diagnostics = parseImageAckDiagnostics(snap.imageAck) ?? undefined;
+      } catch (e) {
+        this.log('debug', `Image-ACK diagnostics unavailable: ${(e as Error).message}`);
       }
-      return diag;
+      try {
+        const st = await svc.getCharacteristic(UUIDS.diagnosticsStatus);
+        snap.status = bytesOf(await this.op(() => st.readValue()));
+      } catch (e) {
+        this.log('debug', `Status record unavailable: ${(e as Error).message}`);
+      }
     } catch (e) {
-      this.log('debug', `Diagnostics unavailable: ${(e as Error).message}`);
+      this.log('debug', `Diagnostics service unavailable: ${(e as Error).message}`);
       return null;
     }
+    if (!snap.imageAck && !snap.status) return null;
+    if (this.info) {
+      if (snap.diagnostics) this.info.diagnostics = snap.diagnostics;
+      this.info.snapshots = [...(this.info.snapshots ?? []), snap].slice(-MAX_SNAPSHOTS);
+      this.emitInfo();
+    }
+    this.log('debug', `Diagnostics snapshot (${label}): status=[${snap.status ? hexOf(snap.status) : '-'}] imageAck=[${snap.imageAck ? hexOf(snap.imageAck) : '-'}]`);
+    return snap.diagnostics ?? null;
   }
 
   /** Locate the image-transfer control/data characteristics. */
@@ -344,7 +417,8 @@ export class TodooCardClient extends EventTarget {
       // The card may issue Service Changed after encryption; give the cache a moment.
       await sleep(600);
       const info = await this.readDeviceInfo();
-      if ((info.firmwareRaw ?? 0) >= FW.diagnostics) await this.readDiagnostics();
+      await this.readDiagnostics('connect');
+      await this.startBatteryNotifications();
       return info;
     } finally {
       this.busy = false;
