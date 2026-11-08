@@ -21,8 +21,9 @@ using your own API keys.
   an ink-usage bar.
 - **Search** images via Openverse or Wikimedia Commons (no key), Pexels, Unsplash,
   Pixabay, Google Programmable Search, Brave or SerpApi (your key).
-- **Generate** images with OpenAI (gpt-image-1), Stability AI, Google Imagen or
-  Replicate (FLUX etc.), with the card's 2:3 aspect ratio.
+- **Generate** images with OpenAI GPT Image (newest model your key can use, e.g.
+  gpt-image-2.6-flare; gpt-image-1 was retired by OpenAI in October 2026), Stability AI,
+  Google Imagen or Replicate (FLUX etc.), with the card's 2:3 aspect ratio.
 - **Send** with progress, cancel, protocol log and the card's refresh acknowledgement
   as the only success signal.
 
@@ -93,6 +94,7 @@ when `watchAdvertisements()` is available.
 | `GET /api/config` | providers, which have server keys, whether an app token is required |
 | `POST /api/search` | `{provider, query, page?, orientation?, keys?}` → normalised results |
 | `POST /api/generate` | `{provider, prompt, aspect, keys?, options?}` → image bytes |
+| `POST /api/models` | `{provider, keys?}` → image models the key can use (OpenAI), best first |
 | `GET /api/image?url=` | CORS-free image fetch with SSRF protection (public hosts only, 25 MB, image types only) |
 
 Environment variables: `PORT`, `APP_ACCESS_TOKEN` (when set, clients must send `X-App-Token`),

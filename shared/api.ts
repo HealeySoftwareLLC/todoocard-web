@@ -72,3 +72,12 @@ export interface ApiErrorBody {
   error: string;
   code?: string;
 }
+
+export interface ModelsRequest {
+  provider: string;
+  keys?: Record<string, string>;
+}
+
+export interface ModelsResponse {
+  models: Array<{ id: string; label?: string; recommended?: boolean }>;
+}

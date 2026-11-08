@@ -18,8 +18,16 @@ export interface GeneratedImage {
   meta?: Record<string, unknown>;
 }
 
+export interface ModelInfo {
+  id: string;
+  label?: string;
+  recommended?: boolean;
+}
+
 export interface GenerateProvider extends ProviderSpec {
   generate(prompt: string, aspect: Aspect, keys: Record<string, string>, options: Record<string, string>): Promise<GeneratedImage>;
+  /** Optional: list models the given keys can use, best first. */
+  listModels?(keys: Record<string, string>): Promise<ModelInfo[]>;
 }
 
 export class UpstreamError extends Error {

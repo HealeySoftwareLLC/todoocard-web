@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Aspect, ConfigResponse, Orientation, SearchResult } from '@shared/api';
-import { fetchRemoteImage, generateImage, searchImages } from '../lib/api';
+import { fetchRemoteImage, generateImage, listModels, searchImages } from '../lib/api';
 import type { Settings } from '../lib/settings';
 
 export interface SourceImage {
@@ -205,16 +205,36 @@ function GenerateTab({ settings, config, onSource }: Omit<Props, 'current'>) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ url: string; blob: Blob; meta?: Record<string, unknown> } | null>(null);
+  const [models, setModels] = useState<Array<{ id: string; recommended?: boolean }> | null>(null);
+  const [model, setModel] = useState('');
 
   useEffect(() => {
     if (providers.length && !providers.some((p) => p.id === provider)) setProvider(providers.find((p) => p.ready)?.id ?? providers[0].id);
   }, [providers, provider]);
 
+  const selReady = providers.find((p) => p.id === provider)?.ready ?? false;
+  useEffect(() => {
+    setModels(null);
+    setModel('');
+    if (!selReady) return;
+    let cancelled = false;
+    listModels(settings, provider)
+      .then((r) => {
+        if (!cancelled) setModels(r.models);
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider, selReady, settings]);
+
   const run = async () => {
     setBusy(true);
     setError(null);
     try {
-      const { blob, meta } = await generateImage(settings, provider, prompt, aspect);
+      const { blob, meta } = await generateImage(settings, provider, prompt, aspect, model ? { model } : {});
       if (result) URL.revokeObjectURL(result.url);
       setResult({ url: URL.createObjectURL(blob), blob, meta });
     } catch (e) {
@@ -243,6 +263,16 @@ function GenerateTab({ settings, config, onSource }: Omit<Props, 'current'>) {
           <option value="3:2">landscape 3:2</option>
           <option value="1:1">square</option>
         </select>
+        {models && models.length > 0 && (
+          <select value={model} onChange={(e) => setModel(e.target.value)} title="Model (from your account)">
+            <option value="">model: auto ({models.find((m) => m.recommended)?.id ?? models[0].id})</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <textarea rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Describe the picture. Bold shapes and saturated red, yellow, blue and green dither best on this panel." />
       <div className="row gap">

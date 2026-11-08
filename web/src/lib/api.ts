@@ -1,4 +1,4 @@
-import type { Aspect, ConfigResponse, GenerateRequest, Orientation, SearchRequest, SearchResponse } from '@shared/api';
+import type { Aspect, ConfigResponse, GenerateRequest, ModelsRequest, ModelsResponse, Orientation, SearchRequest, SearchResponse } from '@shared/api';
 import type { Settings } from './settings';
 
 export class ApiError extends Error {
@@ -67,4 +67,11 @@ export async function fetchRemoteImage(settings: Settings, url: string): Promise
   const res = await fetch(`/api/image?url=${encodeURIComponent(url)}`, { headers: headers(settings, false) });
   if (!res.ok) throw await parseError(res);
   return res.blob();
+}
+
+export async function listModels(settings: Settings, provider: string): Promise<ModelsResponse> {
+  const body: ModelsRequest = { provider, keys: settings.providerKeys[provider] };
+  const res = await fetch('/api/models', { method: 'POST', headers: headers(settings), body: JSON.stringify(body) });
+  if (!res.ok) throw await parseError(res);
+  return (await res.json()) as ModelsResponse;
 }

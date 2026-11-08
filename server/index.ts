@@ -125,6 +125,20 @@ app.post('/api/generate', async (c) => {
   }
 });
 
+app.post('/api/models', async (c) => {
+  if (!limits.search.take(clientIp(c))) return c.json({ error: 'Too many requests', code: 'ratelimit' }, 429);
+  const req = (await c.req.json().catch(() => null)) as { provider?: string; keys?: Record<string, string> } | null;
+  const provider = req?.provider ? generateProviders[req.provider] : undefined;
+  if (!provider) return c.json({ error: 'Unknown generation provider' }, 404);
+  if (!provider.listModels) return c.json({ models: [] });
+  try {
+    const keys = resolveKeys(provider, req?.keys);
+    return c.json({ models: await provider.listModels(keys) });
+  } catch (e) {
+    return errorResponse(c, e);
+  }
+});
+
 app.get('/api/image', async (c) => {
   if (!limits.image.take(clientIp(c))) return c.json({ error: 'Too many requests', code: 'ratelimit' }, 429);
   const url = c.req.query('url');
