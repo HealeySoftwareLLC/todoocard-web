@@ -41,7 +41,7 @@ export function SendPanel({ client, info, connected, prepared, sourceName, log, 
     abortRef.current = ac;
     try {
       const r = await runTransfer(client, { payload, firmwareRaw: fw, signal: ac.signal, onProgress: setProgress });
-      setResult(`Done: ${r.blocks} blocks (${(r.bytes / 1024).toFixed(0)} KB) in ${(r.durationMs / 1000).toFixed(0)} s. The card is refreshing its display.`);
+      setResult(`Done: ${r.blocks} blocks (${(r.bytes / 1024).toFixed(0)} KB) in ${(r.durationMs / 1000).toFixed(0)} s. The card now refreshes its display (20-30 s) and usually disconnects while doing so; reconnect afterwards if you want to send another image.`);
     } catch (e) {
       setError((e as Error).message);
     } finally {

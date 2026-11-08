@@ -192,8 +192,14 @@ export class TodooCardClient extends EventTarget {
         this.log('info', 'Connected');
         return;
       } catch (e) {
-        this.log('warn', `Connect failed: ${(e as Error).message}`);
-        if (attempt === 3) throw new BleError(`Could not connect: ${(e as Error).message}`, 'connect', e);
+        const msg = (e as Error).message ?? String(e);
+        this.log('warn', `Connect failed: ${msg}`);
+        if (attempt === 3) {
+          const hint = /Unsupported device/i.test(msg)
+            ? ' Chrome could not open a GATT connection. Make sure the card is not connected to another app, wait a few seconds (the card reboots after a refresh) and try again.'
+            : '';
+          throw new BleError(`Could not connect: ${msg}.${hint}`, 'connect', e);
+        }
         await sleep(attempt === 1 ? 750 : 1500);
       }
     }
