@@ -51,6 +51,8 @@ function clientIp(c: { req: { header: (n: string) => string | undefined }; env: 
 }
 
 app.use('/api/*', async (c, next) => {
+  // Health stays open for Kubernetes probes and uptime checks; it reveals only the version.
+  if (c.req.path === '/api/health') return next();
   if (APP_TOKEN) {
     const provided = c.req.header('x-app-token') ?? c.req.query('token') ?? '';
     if (provided !== APP_TOKEN) return c.json({ error: 'Missing or invalid app token', code: 'unauthorized' }, 401);
