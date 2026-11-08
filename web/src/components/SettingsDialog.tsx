@@ -42,7 +42,13 @@ export const SettingsDialog = forwardRef<HTMLDialogElement, Props>(function Sett
           </label>
         </section>
 
-        {!config && <div className="banner warn">The API is not reachable, so provider settings cannot be listed. Upload and sending still work.</div>}
+        {!config && (
+          <div className="banner warn">
+            {settings.appToken
+              ? 'The API rejected or could not be reached with this token, so provider settings cannot be listed. Upload and sending still work.'
+              : 'The API is not reachable or requires an access token. Enter the token above if this server needs one; upload and sending work without it.'}
+          </div>
+        )}
 
         {config &&
           groups.map(([kind, title]) => (

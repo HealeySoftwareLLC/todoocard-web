@@ -7,7 +7,7 @@ import { SettingsDialog } from './components/SettingsDialog';
 import { SourcePanel, type SourceImage } from './components/SourcePanel';
 import { useClient } from './hooks/useClient';
 import { useSettings } from './hooks/useSettings';
-import { getConfig } from './lib/api';
+import { getConfig, type ApiError } from './lib/api';
 import { isWebBluetoothSupported } from './lib/ble';
 import { composeToPanel, defaultCompose, loadBitmap, prepareFromImageData, type ComposeOptions, type Prepared } from './lib/compose';
 
@@ -32,7 +32,10 @@ export function App() {
         setConfig(c);
         setConfigError(null);
       })
-      .catch((e) => setConfigError((e as Error).message));
+      .catch((e) => {
+        setConfig(null);
+        setConfigError((e as ApiError).status === 401 ? 'token' : (e as Error).message);
+      });
     // Re-fetch when the app token changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.appToken]);
@@ -94,7 +97,17 @@ export function App() {
           <p className="sub">Pair, prepare and flash six-colour e-paper cards from Chrome</p>
         </div>
         <div className="topbar-actions">
-          {config ? <span className="chip ok">API v{config.version}</span> : <span className="chip warn" title={configError ?? ''}>API offline</span>}
+          {config ? (
+            <span className="chip ok">API v{config.version}</span>
+          ) : configError === 'token' ? (
+            <button className="chip warn as-button" title="This server requires an access token. Enter it in Settings." onClick={() => settingsRef.current?.showModal()}>
+              API: token required
+            </button>
+          ) : (
+            <span className="chip warn" title={configError ?? ''}>
+              API offline
+            </span>
+          )}
           <button className="btn" onClick={() => settingsRef.current?.showModal()}>
             Settings
           </button>

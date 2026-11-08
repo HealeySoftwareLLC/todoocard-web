@@ -127,3 +127,4 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .field.row { flex-direction: row; align-items: center; }
 .field em { color: var(--muted); font-style: normal; }
 .provider { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.chip.as-button { border: none; cursor: pointer; font: inherit; font-size: 0.8rem; }
