@@ -1,0 +1,9 @@
+services:
+  todoocard-web:
+    image: ghcr.io/brianhealey/todoocard-web:latest
+    build: ..
+    ports:
+      - "8787:8787"
+    env_file:
+      - ../.env
+    restart: unless-stopped

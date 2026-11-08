@@ -1,0 +1,25 @@
+# Example Traefik ingress with cert-manager. For a Cloudflare Tunnel instead,
+# point the tunnel's ingress rule at http://todoocard-web.todoocard-web.svc.cluster.local:80
+# (see deploy/cloudflared.md).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: todoocard-web
+  namespace: todoocard-web
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: cards.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: todoocard-web
+                port: { name: http }
+  tls:
+    - hosts: [cards.example.com]
+      secretName: todoocard-web-tls

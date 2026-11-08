@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: todoocard-web
+  namespace: todoocard-web
+  labels: { app: todoocard-web }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: todoocard-web }
+  template:
+    metadata:
+      labels: { app: todoocard-web }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: web
+          image: ghcr.io/brianhealey/todoocard-web:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8787
+          env:
+            - name: PORT
+              value: "8787"
+            # Optional: protect a public instance. Create the secret with
+            #   kubectl create secret generic todoocard-web --from-literal=APP_ACCESS_TOKEN=... --dry-run=client -o yaml | kubeseal ...
+          envFrom:
+            - secretRef:
+                name: todoocard-web
+                optional: true
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { memory: 384Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: todoocard-web
+  namespace: todoocard-web
+spec:
+  selector: { app: todoocard-web }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
