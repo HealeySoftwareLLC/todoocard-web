@@ -5,6 +5,8 @@ import {
   parseFirmwareRevisionString,
   parseImageAckDiagnostics,
   parseManufacturerData,
+  parseStatusRecord,
+  statusCodeName,
   u32le,
 } from '../shared/protocol';
 
@@ -73,5 +75,27 @@ describe('diagnostics', () => {
     expect(r.rejected).toBe(1);
     expect(r.requestedBlock).toBe(320);
     expect(r.lastReceivedBlock).toBe(319);
+  });
+
+  it('decodes the 22-byte ...1002 status record (verified live sample)', () => {
+    // Captured from a real card; the firmware hard-codes markers [2]=0x25, [11]=0x26, [12]=0x01.
+    const d = new Uint8Array([
+      0x01, 0x01, 0x25, 0x05, 0x00, 0x00, 0x03, 0x68, 0x06, 0x34, 0x01, 0x26, 0x01, 0x02, 0x09, 0x00, 0x17, 0x20,
+      0x25, 0x00, 0x1b, 0x01,
+    ]);
+    const s = parseStatusRecord(d)!;
+    expect(s.markerOk).toBe(true);
+    expect(s.statusCode).toBe(0x01);
+    expect(s.selfTest).toHaveLength(9);
+    expect(s.eventCounter).toBe(9); // u16 LE at [14..15] = 0x0009
+    expect(s.aux).toEqual([0x2017, 0x0025, 0x011b]);
+  });
+
+  it('flags unexpected markers and names status codes', () => {
+    const bad = new Uint8Array(22); // all zero → markers absent
+    expect(parseStatusRecord(bad)!.markerOk).toBe(false);
+    expect(parseStatusRecord(new Uint8Array(10))).toBeNull(); // too short
+    expect(statusCodeName(0x12)).toBe('idle / complete');
+    expect(statusCodeName(0x7f)).toBe('0x7f');
   });
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FW, STATUS, hex } from '@shared/protocol';
+import { FW, STATUS, hex, statusCodeName } from '@shared/protocol';
 import { BleError, type DeviceInfo, type DiagSnapshot, type TodooCardClient } from '../lib/ble';
 
 interface Props {
@@ -161,6 +161,7 @@ function RawDiagnostics({ client, info, connected }: { client: TodooCardClient; 
   const snaps = info.snapshots ?? [];
   const latest = snaps[snaps.length - 1];
   const d = latest?.diagnostics;
+  const s = latest?.statusRecord;
   const flagBits = (f: number) =>
     [f & 0x01 ? 'active' : '', f & 0x02 ? 'pending' : '', f & 0x04 ? 'block-received' : '', f & 0x08 ? 'last-accepted' : ''].filter(Boolean).join(', ') || 'none';
   const statusName = (v: number) => (v === STATUS.transferEnd ? 'refresh done' : v === STATUS.success ? 'ok' : `0x${v.toString(16).padStart(2, '0')}`);
@@ -169,8 +170,8 @@ function RawDiagnostics({ client, info, connected }: { client: TodooCardClient; 
     <details className="help">
       <summary>Raw diagnostics</summary>
       <p className="muted small">
-        Two vendor records: the documented image-ACK record (…1003) and an undocumented 22-byte status record (…1002). Snapshots are taken at connect and before/after each
-        send; bytes that changed since the previous snapshot are highlighted so the status record can be decoded over time.
+        Two vendor records from the card's hidden diagnostics service: the image-ACK record (…1003) and a 22-byte status record (…1002), both decoded from a clean-room read of
+        firmware v185. Snapshots are taken at connect and before/after each send; changed bytes are highlighted. Some …1002 fields are still tentative.
       </p>
       <div className="row gap">
         <button
@@ -227,6 +228,36 @@ function RawDiagnostics({ client, info, connected }: { client: TodooCardClient; 
               <th>Results</th>
               <td>
                 previous {statusName(d.previousStatus)}, last notify {statusName(d.lastNotifyResult)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+      {s && (
+        <table className="kv small">
+          <tbody>
+            <tr>
+              <th>Status (…1002)</th>
+              <td>
+                {statusCodeName(s.statusCode)} (0x{s.statusCode.toString(16).padStart(2, '0')})
+                {s.markerOk ? '' : ' · ⚠ unexpected markers'}
+              </td>
+            </tr>
+            <tr>
+              <th>Events</th>
+              <td>
+                counter {s.eventCounter}
+                {s.valid ? '' : ' · inactive'}
+              </td>
+            </tr>
+            <tr>
+              <th>Self-test</th>
+              <td className="mono">{s.selfTest.map((b) => b.toString(16).padStart(2, '0')).join(' ')}</td>
+            </tr>
+            <tr>
+              <th>Aux</th>
+              <td>
+                {s.aux[0]}, {s.aux[1]}, {s.aux[2]} <span className="muted">(tentative)</span>
               </td>
             </tr>
           </tbody>

@@ -17,8 +17,10 @@ import {
   parseFirmwareRevisionString,
   parseImageAckDiagnostics,
   parseManufacturerData,
+  parseStatusRecord,
   type Advertisement,
   type ImageAckDiagnostics,
+  type StatusRecord,
 } from '@shared/protocol';
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
@@ -44,6 +46,8 @@ export interface DeviceInfo {
   flags?: ReturnType<typeof describeAdvertisement>;
   rssi?: number;
   diagnostics?: ImageAckDiagnostics;
+  /** Decoded ...1002 status record (latest snapshot). */
+  statusRecord?: StatusRecord;
   /** True once Battery Level notifications are flowing. */
   batteryLive?: boolean;
   /** Raw diagnostics snapshots, newest last (capped). */
@@ -59,6 +63,7 @@ export interface DiagSnapshot {
   /** D8B282F0-…1003 (image-ACK record) */
   imageAck?: Uint8Array;
   diagnostics?: ImageAckDiagnostics;
+  statusRecord?: StatusRecord;
 }
 
 const MAX_SNAPSHOTS = 12;
@@ -369,6 +374,7 @@ export class TodooCardClient extends EventTarget {
       try {
         const st = await svc.getCharacteristic(UUIDS.diagnosticsStatus);
         snap.status = bytesOf(await this.op(() => st.readValue()));
+        snap.statusRecord = parseStatusRecord(snap.status) ?? undefined;
       } catch (e) {
         this.log('debug', `Status record unavailable: ${(e as Error).message}`);
       }
@@ -379,6 +385,7 @@ export class TodooCardClient extends EventTarget {
     if (!snap.imageAck && !snap.status) return null;
     if (this.info) {
       if (snap.diagnostics) this.info.diagnostics = snap.diagnostics;
+      if (snap.statusRecord) this.info.statusRecord = snap.statusRecord;
       this.info.snapshots = [...(this.info.snapshots ?? []), snap].slice(-MAX_SNAPSHOTS);
       this.emitInfo();
     }

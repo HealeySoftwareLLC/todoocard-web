@@ -224,3 +224,57 @@ export function parseImageAckDiagnostics(d: Uint8Array): ImageAckDiagnostics | n
     lastReceivedBlock: u16(18),
   };
 }
+
+/**
+ * Decoded ...1002 "status record" (22 bytes). Layout recovered clean-room from
+ * TLSR8258 firmware v185 (see todoocard-firmware/docs/gatt.md). The buffer is a
+ * window into a larger SRAM status struct; ...1003 is the next window.
+ *
+ * Confidence: `marker*`, `eventCounter` are verified (constants match live
+ * captures; the counter writer is unambiguous). `statusCode` and `selfTest` are
+ * medium-confidence; `aux*` are the remaining u16 fields, semantics tentative.
+ */
+export interface StatusRecord {
+  header: number; // [0]
+  /** [1] result/phase code of the on-device self-test / transfer state machine. */
+  statusCode: number;
+  /** [2]==0x25 && [11]==0x26 && [12]==0x01 — firmware format signature. */
+  markerOk: boolean;
+  /** [2..10] 9-byte self-test / identity sub-block. */
+  selfTest: number[];
+  /** [13] valid/active flag (firmware sets to 1 on update). */
+  valid: number;
+  /** u16 [14..15], saturating event counter. */
+  eventCounter: number;
+  /** u16 [16..17], [18..19], [20..21] — further counters/values (tentative). */
+  aux: [number, number, number];
+  /** True when the three signature markers are all present. */
+}
+
+const STATUS_CODE_NAMES: Record<number, string> = {
+  0x11: 'started',
+  0x02: 'stage 2',
+  0x04: 'stage 4',
+  0x09: 'stage 9',
+  0x0b: 'stage 11',
+  0x10: 'finalizing',
+  0x12: 'idle / complete',
+};
+
+export function statusCodeName(v: number): string {
+  return STATUS_CODE_NAMES[v] ?? `0x${v.toString(16).padStart(2, '0')}`;
+}
+
+export function parseStatusRecord(d: Uint8Array): StatusRecord | null {
+  if (d.length < 22) return null;
+  const u16 = (o: number) => d[o] | (d[o + 1] << 8);
+  return {
+    header: d[0],
+    statusCode: d[1],
+    markerOk: d[2] === 0x25 && d[11] === 0x26 && d[12] === 0x01,
+    selfTest: Array.from(d.slice(2, 11)),
+    valid: d[13],
+    eventCounter: u16(14),
+    aux: [u16(16), u16(18), u16(20)],
+  };
+}
